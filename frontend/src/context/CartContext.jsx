@@ -21,10 +21,10 @@ export const CartProvider = ({ children }) => {
     }
   }, [cart, activeRestaurantId]);
 
-  const addToCart = (item, resId) => {
+  // UPGRADED: Added isRecommendation and anchorItemId flags
+  const addToCart = (item, resId, isRecommendation = false, anchorItemId = null) => {
     const stringResId = resId ? String(resId) : null;
     
-    // 1. Restaurant Validation Logic
     if (activeRestaurantId && stringResId && activeRestaurantId !== stringResId) {
       const confirmClear = window.confirm(
         "You have items from another restaurant in your cart. Discard and add this instead?"
@@ -39,7 +39,6 @@ export const CartProvider = ({ children }) => {
     if (!activeRestaurantId && stringResId) setActiveRestaurantId(stringResId);
 
     setCart((prev) => {
-      // FIX: Force both IDs to String for comparison
       const existing = prev.find((i) => String(i.item_id) === String(item.item_id));
       if (existing) {
         return prev.map((i) =>
@@ -48,11 +47,25 @@ export const CartProvider = ({ children }) => {
       }
       return [...prev, { ...item, qty: 1 }];
     });
+
+    // --- THE ML FEEDBACK LOOP ---
+    // If this item was added via the Recommendation Drawer, log it!
+    if (isRecommendation && anchorItemId) {
+      fetch("http://localhost:8000/log_interaction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: "demo_judge_user", 
+          anchor_item_id: anchorItemId,
+          recommended_item_id: item.item_id,
+          action: "added_to_cart"
+        })
+      }).catch(err => console.error("ML Logging failed:", err));
+    }
   };
 
   const removeFromCart = (itemId) => {
     setCart((prev) => {
-      // FIX: Force ID to String
       const item = prev.find(i => String(i.item_id) === String(itemId));
       if (!item) return prev;
 

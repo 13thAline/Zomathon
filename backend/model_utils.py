@@ -1,104 +1,114 @@
 import pandas as pd
 import numpy as np
+import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
 
 CSV_PATH = 'items.csv' 
-NPY_PATH = 'final_backend_embeddings.npy' # Ensure this matches your actual .npy filename
+NPY_PATH = 'final_backend_embeddings.npy' 
 
-print("Loading ML Matrix and Strict Taxonomy...")
+print("1. Loading Neural Embeddings & Catalog...")
 df = pd.read_csv(CSV_PATH)
 embeddings = np.load(NPY_PATH)
 
-def get_meal_completion_recs(item_id, top_n=5):
+print("2. Building the Knowledge Graph Bouncer...")
+def build_restaurant_graph(restaurant_id):
+    G = nx.Graph()
+    res_df = df[df['restaurant_id'] == restaurant_id]
+
+    for _, row in res_df.iterrows():
+        item_id = int(row['item_id'])
+        G.add_node(item_id, type='item', data=row.to_dict())
+        G.add_node(f"CUISINE_{row['cuisine_type']}", type='cuisine')
+        G.add_node(f"CAT_{row['category']}", type='category')
+        
+        G.add_edge(item_id, f"CUISINE_{row['cuisine_type']}", weight=1.0)
+        G.add_edge(item_id, f"CAT_{row['category']}", weight=1.0)
+
+    # The Immutable Laws of Food (Based on the new Master Taxonomy)
+    synergies = [
+        ("CAT_Wet Curry", "CAT_Bread", 8.0),
+        ("CAT_Wet Curry", "CAT_Starter", 3.0),
+        ("CAT_Dry Main", "CAT_Side", 6.0),
+        ("CAT_Fast Food Main", "CAT_Side", 8.0),
+        ("CAT_Starter", "CAT_Dry Main", 4.0),
+        ("CAT_Starter", "CAT_Fast Food Main", 4.0),
+        ("CAT_Drink", "CAT_Fast Food Main", 3.0),
+        ("CAT_Drink", "CAT_Starter", 3.0),
+        ("CAT_Dessert", "CAT_Drink", 2.0)
+    ]
+    for u, v, w in synergies:
+        G.add_edge(u, v, weight=w)
+        
+    return G
+
+# Cache graphs in memory
+graphs = {res_id: build_restaurant_graph(res_id) for res_id in df['restaurant_id'].unique()}
+
+def get_meal_completion_recs(item_id, top_n=6):
     try:
         idx = df[df['item_id'] == int(item_id)].index[0]
     except IndexError:
-        print(f"Error: ID {item_id} not found.")
         return []
 
     target_vec = embeddings[idx].reshape(1, -1)
-    target_cat = df.iloc[idx]['category']
-    target_cuisine = df.iloc[idx]['cuisine_type']
-    target_res_id = df.iloc[idx]['restaurant_id']
-    target_name = str(df.iloc[idx]['name']).lower()
+    target_row = df.iloc[idx]
+    res_id = target_row['restaurant_id']
+    target_cuisine = target_row['cuisine_type']
+    target_cat = target_row['category']
+    
+    if res_id not in graphs:
+        return []
+    G = graphs[res_id]
 
-    # --- CSV FALLBACK HACK ---
-    # Just in case your CSV still says "General" for Momos, we forcefully correct it in memory
-    if 'momo' in target_name or 'spring roll' in target_name:
-        target_cuisine = 'Chinese'
-
+    # === STAGE 1: NEURAL NETWORK RECALL ===
     sim_scores = cosine_similarity(target_vec, embeddings).flatten()
-    boosted_df = df.copy()
-    boosted_df['similarity'] = sim_scores
     
-    # 1. THE RESTAURANT LOCK
-    boosted_df = boosted_df[boosted_df['restaurant_id'] == target_res_id]
+    # === STAGE 2: GRAPH THEORY RE-RANKING ===
+    try:
+        pagerank_scores = nx.pagerank(G, personalization={int(item_id): 1.0}, weight='weight', alpha=0.85)
+    except Exception:
+        pagerank_scores = {}
 
-    # 2. THE TITANIUM CUISINE SHIELD (Nukes Butter Chicken for Momos)
-    cross_cuisine_mask = (boosted_df['cuisine_type'] != target_cuisine) & (~boosted_df['category'].isin(['Drink', 'Dessert']))
-    boosted_df.loc[cross_cuisine_mask, 'similarity'] *= 0.0001 
+    hybrid_scores = []
+    seen_names = {str(target_row['name']).split('(')[0].strip().lower()}
 
-    # 3. THE TEMPERATURE FILTER (Kills Masala Tea for Fast Food/Chinese)
-    is_hot_drink = boosted_df['name'].str.lower().str.contains('tea|coffee')
-    is_cold_drink = boosted_df['name'].str.lower().str.contains('coke|pepsi|sprite|soda|mojito|shake|lassi')
-    
-    if target_cuisine in ['Fast Food', 'Chinese'] or target_cat == 'Fast Food Main':
-        boosted_df.loc[is_hot_drink, 'similarity'] *= 0.01   # Destroy hot drinks
-        boosted_df.loc[is_cold_drink, 'similarity'] *= 2.0   # Boost sodas
-
-    # 4. STRUCTURAL TAXONOMY MULTIPLIERS
-    if target_cat == 'Wet Curry':
-        boosted_df.loc[boosted_df['category'].isin(['Wet Curry', 'Dry Main']), 'similarity'] *= 0.05 
-        boosted_df.loc[boosted_df['category'] == 'Bread', 'similarity'] *= 8.0 
-        boosted_df.loc[boosted_df['category'] == 'Starter', 'similarity'] *= 2.0
-        boosted_df.loc[boosted_df['category'] == 'Drink', 'similarity'] *= 1.5
-
-    elif target_cat == 'Dry Main': 
-        boosted_df.loc[boosted_df['category'].isin(['Wet Curry', 'Dry Main']), 'similarity'] *= 0.05
-        boosted_df.loc[boosted_df['category'] == 'Side', 'similarity'] *= 5.0 
-        boosted_df.loc[boosted_df['category'] == 'Starter', 'similarity'] *= 2.0
-        boosted_df.loc[boosted_df['category'] == 'Drink', 'similarity'] *= 1.5
-
-    elif target_cat == 'Fast Food Main': 
-        boosted_df.loc[boosted_df['category'] == 'Fast Food Main', 'similarity'] *= 0.05
-        boosted_df.loc[boosted_df['category'] == 'Side', 'similarity'] *= 6.0 
-        boosted_df.loc[boosted_df['category'] == 'Drink', 'similarity'] *= 3.0
-
-    elif target_cat == 'Bread':
-        boosted_df.loc[boosted_df['category'] == 'Bread', 'similarity'] *= 0.05
-        boosted_df.loc[boosted_df['category'] == 'Wet Curry', 'similarity'] *= 8.0 
-        boosted_df.loc[boosted_df['category'] == 'Dry Main', 'similarity'] *= 0.1 
-        boosted_df.loc[boosted_df['category'] == 'Starter', 'similarity'] *= 1.5
-
-    elif target_cat == 'Starter':
-        boosted_df.loc[boosted_df['category'] == 'Starter', 'similarity'] *= 0.05
-        # Force Mains to the absolute top of the list over drinks
-        boosted_df.loc[boosted_df['category'].isin(['Wet Curry', 'Dry Main', 'Fast Food Main']), 'similarity'] *= 10.0
-        boosted_df.loc[boosted_df['category'] == 'Drink', 'similarity'] *= 3.0
-        boosted_df.loc[boosted_df['category'] == 'Dessert', 'similarity'] *= 2.5
-
-    elif target_cat == 'Dessert':
-        boosted_df.loc[~boosted_df['category'].isin(['Dessert', 'Drink']), 'similarity'] *= 0.01
-
-    if target_cat in ['Wet Curry', 'Dry Main', 'Fast Food Main', 'Bread']:
-        boosted_df.loc[boosted_df['category'] == 'Dessert', 'similarity'] *= 0.3
-
-    # Sort mathematically
-    boosted_df = boosted_df.sort_values(by='similarity', ascending=False)
-    
-    # 5. BULLETPROOF DEDUPLICATION
-    final_recs = []
-    seen_names = {target_name.split('(')[0].strip()}
-    
-    for _, row in boosted_df.iterrows():
-        clean_name = str(row['name']).split('(')[0].strip().lower()
+    for i, row in df.iterrows():
+        current_id = int(row['item_id'])
         
-        if int(float(row['item_id'])) == int(float(item_id)) or clean_name in seen_names:
+        if row['restaurant_id'] != res_id or current_id == int(item_id):
             continue
             
-        final_recs.append(row.to_dict())
-        seen_names.add(clean_name)
+        clean_name = str(row['name']).split('(')[0].strip().lower()
+        if clean_name in seen_names:
+            continue
+            
+        # Cuisine Shield
+        if row['cuisine_type'] != target_cuisine and row['category'] not in ['Drink', 'Dessert']:
+            continue
+
+        nn_score = sim_scores[i] 
+        graph_score = pagerank_scores.get(current_id, 0.0) * 100 
         
+        # 60% Neural Net / 40% Graph
+        final_score = (nn_score * 0.6) + (graph_score * 0.4)
+        
+        # Hot vs Cold Drink Override
+        if row['category'] == 'Drink':
+            is_hot = any(w in clean_name for w in ['tea', 'coffee', 'hot'])
+            if target_cuisine in ['Fast Food', 'Chinese'] and is_hot:
+                final_score *= 0.01 
+
+        if target_cat in ['Wet Curry', 'Dry Main', 'Fast Food Main', 'Bread'] and row['category'] == 'Dessert':
+            final_score *= 0.4
+
+        hybrid_scores.append((final_score, row.to_dict(), clean_name))
+
+    hybrid_scores.sort(key=lambda x: x[0], reverse=True)
+    
+    final_recs = []
+    for score, data, clean_name in hybrid_scores:
+        final_recs.append(data)
+        seen_names.add(clean_name)
         if len(final_recs) == top_n:
             break
             
