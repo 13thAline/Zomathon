@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Minus, Plus, ChevronRight, ShoppingBag, Tag } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Minus, Plus, ChevronRight, ShoppingBag, Tag, ChevronLeft } from 'lucide-react';
 import { getFoodImage } from '../utils/ImageHelper';
 
 const OrderPage = () => {
   const { cart, totalAmount, addToCart, removeFromCart, activeRestaurantId, clearCart } = useCart();
+  const navigate = useNavigate();
   const [recs, setRecs] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -50,9 +52,14 @@ const OrderPage = () => {
 
   return (
     <div className="pt-16 p-4 pb-44 bg-gray-50 min-h-screen font-sans">
-      <div className="flex items-center space-x-2 mb-6 text-left">
-        <h2 className="text-2xl font-black tracking-tight text-gray-800 uppercase">Review Order</h2>
-        <span className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">Checkout</span>
+      <div className="flex items-center space-x-3 mb-6">
+        <button onClick={() => navigate(-1)} className="p-1.5 bg-white border border-gray-100 rounded-full hover:bg-gray-50 active:scale-95 transition-all shadow-sm">
+          <ChevronLeft size={22} className="text-gray-800" />
+        </button>
+        <div className="flex items-center space-x-2">
+          <h2 className="text-xl font-black tracking-tight text-gray-800 uppercase">Review Order</h2>
+          <span className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">Checkout</span>
+        </div>
       </div>
 
       {/* 1. Active Cart Items with Quantity Controls */}
