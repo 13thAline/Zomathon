@@ -24,7 +24,7 @@ If you simply want to run the application using pre-trained data:
 
 **1. Data Preparation**
 You do not need to run the complex training pipeline. We provide the already compiled required files via a drive link:
-- [🔗 Download items.csv and final_backend_embeddings.npy here (Placeholder Link)](https://drive.google.com/drive/folders/1rUQaQvkzjASKWW6h9melDxPy-5CfCgch?usp=sharing)
+- [🔗 Download items.csv and final_backend_embeddings.npy here](https://drive.google.com/drive/folders/1rUQaQvkzjASKWW6h9melDxPy-5CfCgch?usp=sharing)
 
 *Please download `items.csv` and `final_backend_embeddings.npy` from the drive link above and place them directly in the `backend/` directory.*
 
@@ -51,7 +51,7 @@ If you want to edit the data, tweak the model, or retrain the Two-Tower neural n
 
 **1. Data Preparation**
 You will need the raw restaurant data to feed into the catalog generator.
-- [🔗 Download restaurants.csv here (Placeholder Link)](#)
+- [🔗 Download restaurants.csv here](https://drive.google.com/drive/folders/1q7SVQNxiD1t4YPjfzW675g8ti3ho5UK6?usp=sharing)
 
 *Please download `restaurants.csv` from the drive link above and place it inside the `backend/training_pipeline/` directory.*
 
