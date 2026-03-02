@@ -24,7 +24,7 @@ If you simply want to run the application using pre-trained data:
 
 **1. Data Preparation**
 You do not need to run the complex training pipeline. We provide the already compiled required files via a drive link:
-- [🔗 Download items.csv and final_backend_embeddings.npy here (Placeholder Link)](#)
+- [🔗 Download items.csv and final_backend_embeddings.npy here (Placeholder Link)](https://drive.google.com/drive/folders/1rUQaQvkzjASKWW6h9melDxPy-5CfCgch?usp=sharing)
 
 *Please download `items.csv` and `final_backend_embeddings.npy` from the drive link above and place them directly in the `backend/` directory.*
 
